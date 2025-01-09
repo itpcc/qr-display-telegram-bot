@@ -1,0 +1,12 @@
+[Unit]
+Description=Telegram bot QR code display
+
+[Service]
+# Command to execute when the service is started
+ExecStart=/usr/bin/python3 /root/spi-display/telegram_bot.py
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=/root/spi-display/.env
+Restart=on-failure
+
+[Install]
+WantedBy=default.target

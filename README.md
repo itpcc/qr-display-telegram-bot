@@ -2,6 +2,10 @@
 
 A Python script to display QR code on ST7789V SPI TFT display module from either text or QR code image.
 
+![Sample chat](chat.png)
+
+![Display image](display.png)
+
 ## Table of Contents
 
 - [Installation](#installation)
