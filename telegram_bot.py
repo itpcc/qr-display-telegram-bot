@@ -8,7 +8,7 @@ from threading import Thread, Event
 import time
 from dotenv import load_dotenv
 from PIL import Image
-import pyzbar
+from pyzbar import pyzbar
 import qrcode
 from telegram import Update, Message
 from telegram.ext import Application, ContextTypes, MessageHandler, filters
@@ -71,10 +71,24 @@ def thread_display(p2k: Event, q: Queue) -> None:
         display.turn_off()
         logger.info("thread_display | Stop.")
 
-async def on_text(msg: Message, url: str) -> None:
-    """Handle text message."""
+async def format_image(url: str, msg: Message, img: Image) -> None:
+    """Format image to display."""
 
-    logger.debug(f"on_text | Generaing QR: {url}")
+    canvas = Image.new('RGB', (240, 320), (255, 255, 255))
+    canvas.paste(img.resize((240, 240)), (0, int((canvas.size[1] - 240) / 2)))
+    buf = io.BytesIO()
+    canvas.save(buf, format='PNG')
+
+    logger.debug("format_image | QR enqueue: %s", url)
+    img_queue.put(canvas.convert('RGB').getdata())
+
+    logger.info("format_image | Reply image: %s", url)
+    await msg.reply_photo(photo=buf.getvalue(), caption=url)
+
+def qr_from_text(url: str) -> Image:
+    """Generate QR code from string."""
+
+    logger.debug("qr_from_text | Generaing QR: %s", url)
     # Generate QR code
     qr = qrcode.QRCode(
         version=None,
@@ -86,21 +100,16 @@ async def on_text(msg: Message, url: str) -> None:
     qr.make(fit=True)
 
     img = qr.make_image(fill_color="black", back_color="white").get_image()
-    canvas = Image.new('RGB', (240, 320), (255, 255, 255))
-    canvas.paste(img.resize((240, 240)), (0, int((canvas.size[1] - 240) / 2)))
-    buf = io.BytesIO()
-    canvas.save(buf, format='PNG')
 
-    logger.debug(f"on_text | QR enqueue: {url}")
-    img_queue.put(canvas.convert('RGB').getdata())
-
-    logger.info(f"on_text | Reply image: {url}")
-    await msg.reply_photo(photo=buf.getvalue(), caption=url)
+    return img
 
 async def handle_text(update: Update, _context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle text message."""
     logger.debug("handle_text | Receive: %s", update.message.text)
-    await on_text(update.message, update.message.text)
+
+    url = update.message.text
+
+    await format_image(url, update.message, qr_from_text(url))
 
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle photo message."""
@@ -118,17 +127,32 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
     img = Image.open(buf)
     logger.debug("handle_photo | Decoding: %s", file_id)
-    qr_codes = pyzbar.pyzbar.decode(img)
-    first_qr_code = next((qr for qr in qr_codes if qr.type == 'QRCODE')) or None
+    qr_codes = pyzbar.decode(img)
+
+    first_qr_code = None
+
+    try:
+        first_qr_code = next((qr for qr in qr_codes if qr.type == 'QRCODE')) or None
+    except StopIteration:
+        first_qr_code = None
 
     if first_qr_code is None:
         logger.warning("handle_photo | No QR code found: %s", file_id)
         await update.message.reply_text("No QR code found")
+        return
 
     url = first_qr_code.data.decode("utf-8")
     logger.info("handle_photo | URL retrieved: %s", url)
+    rect = first_qr_code.rect
 
-    await on_text(update.message, url)
+    qr_img = img.crop( (
+        max(10, rect.left - 10),
+        max(10, rect.top),
+        min(img.width, rect.left + rect.width + 10),
+        min(img.height, rect.top + rect.height + 10),
+    )) if "bora.dopa" in url else qr_from_text(url)
+
+    await format_image(url, update.message, qr_img)
 
 def main() -> None:
     """Start the bot."""
