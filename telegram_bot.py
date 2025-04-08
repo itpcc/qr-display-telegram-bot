@@ -31,6 +31,8 @@ logger = logging.getLogger(__name__)
 def thread_display(p2k: Event, q: Queue) -> None:
     """Display thread."""
     logger.info("thread_display | Start.")
+    img_dsp_sec = int(os.getenv("IMAGE_DISPLAY_SEC", "10"))
+
     with RaspberryPi() as rpi:
         display = Display(rpi)
 
@@ -56,7 +58,7 @@ def thread_display(p2k: Event, q: Queue) -> None:
                 time.sleep(5)
                 display.set_color_mode(666)
                 display.draw_rgb_bytes(data_list)
-                time.sleep(10)
+                time.sleep(img_dsp_sec)
                 logger.debug("thread_display | Display Done")
             except Empty:
                 if not is_log_turn_off:
